@@ -1,0 +1,325 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+from matplotlib.lines import Line2D
+
+# Define parameters and assign fixed colors
+color_dict = {
+    'LE_CORR': '#1f77b4',          # blue
+    'H_CORR': '#ff7f0e',           # orange
+    'TA_F': '#2ca02c',             # green
+    'VPD_F': '#d62728',            # red
+    'P_F': '#9467bd',              # purple
+    'H_F_MDS': '#8c564b',          # brown
+    'GPP_DT_VUT_MEAN': '#e377c2',  # pink
+    'LE_F_MDS': '#7f7f7f',         # gray
+    'G_F_MDS': '#bcbd22',          # olive
+    'TS_F_MDS_1': '#17becf',       # teal
+    'NETRAD': '#000000',           # black
+    'SWC_F_MDS_1': '#20B2AA'       # light sea green
+}
+
+parameters = list(color_dict.keys())
+
+# Fixed absolute Y positions for each parameter (distance from zero line)
+# Increased distances for better separation
+parameter_distances = {
+    'LE_CORR': 0.2,
+    'H_CORR': 0.4,
+    'TA_F': 0.6,
+    'VPD_F': 0.8,
+    'P_F': 1.0,
+    'H_F_MDS': 1.2,
+    'GPP_DT_VUT_MEAN': 1.4,
+    'LE_F_MDS': 1.6,
+    'G_F_MDS': 1.8,
+    'TS_F_MDS_1': 2.0,
+    'NETRAD': 2.2,
+    'SWC_F_MDS_1': 2.4
+}
+
+# Directory containing Excel files
+input_directory = r'C:\Deepak\stations\MM\Final1\yearly'
+output_directory = r'C:\Deepak\stations\MM\Final1\yearly\plots'
+
+# Create output directory if it doesn't exist
+os.makedirs(output_directory, exist_ok=True)
+
+# Get list of Excel files - separate yearly and JJA files
+yearly_files = [f for f in os.listdir(input_directory) if f.endswith('_yearly.xlsx')]
+jja_files = [f for f in os.listdir(input_directory) if f.endswith('_JJA.xlsx')]
+
+# Create a mapping between yearly and JJA files
+file_pairs = {}
+for y_file in yearly_files:
+    base_name = y_file.replace('_yearly.xlsx', '')
+    jja_file = base_name + '_JJA.xlsx'
+    if jja_file in jja_files:
+        file_pairs[base_name] = {'yearly': y_file, 'jja': jja_file}
+    else:
+        file_pairs[base_name] = {'yearly': y_file, 'jja': None}
+
+# Also include JJA files that don't have yearly counterparts
+for j_file in jja_files:
+    base_name = j_file.replace('_JJA.xlsx', '')
+    if base_name not in file_pairs:
+        file_pairs[base_name] = {'yearly': None, 'jja': j_file}
+
+# Process each file pair
+for base_name, files in file_pairs.items():
+    try:
+        # Create figure with two subplots side by side - INCREASED FIGURE SIZE
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(28, 16))
+        axes = [ax1, ax2]
+        
+        # Titles for each subplot
+        plot_titles = ['Yearly Trends', 'JJA (Summer) Trends']
+        data_loaded = [False, False]
+        
+        # Process yearly data (left plot)
+        if files['yearly']:
+            yearly_file_path = os.path.join(input_directory, files['yearly'])
+            try:
+                p_values_df_yearly = pd.read_excel(yearly_file_path, sheet_name='P-values')
+                slopes_df_yearly = pd.read_excel(yearly_file_path, sheet_name='Slopes')
+                
+                # Clean the data
+                p_values_df_yearly = p_values_df_yearly.dropna(how='all')
+                slopes_df_yearly = slopes_df_yearly.dropna(how='all')
+                p_values_df_yearly = p_values_df_yearly.reset_index(drop=True)
+                slopes_df_yearly = slopes_df_yearly.reset_index(drop=True)
+                
+                years = slopes_df_yearly['Years'].values
+                data_loaded[0] = True
+                
+                # Plot yearly data
+                ax = ax1
+                for year_idx, year in enumerate(years):
+                    for param in parameters:
+                        if param not in slopes_df_yearly.columns or param not in p_values_df_yearly.columns:
+                            continue
+                            
+                        slope = slopes_df_yearly[param].iloc[year_idx]
+                        p_val = p_values_df_yearly[param].iloc[year_idx]
+
+                        if pd.isna(p_val) or pd.isna(slope):
+                            continue
+
+                        # FIXED POSITION: Use the predefined distance from zero
+                        # If slope is positive: above zero (positive Y)
+                        # If slope is negative: below zero (negative Y)
+                        base_distance = parameter_distances[param]
+                        y_position = base_distance if slope >= 0 else -base_distance
+                        
+                        x_position = year_idx  # Center on the year position
+                        
+                        # Small random offset to avoid perfect alignment
+                        x_offset = np.random.uniform(-0.15, 0.15)
+                        x_position += x_offset
+
+                        # Marker rules based on p-values - INCREASED SIZES
+                        if p_val < 0.1:
+                            marker = 'o'   # full circle
+                            marker_size = 300  # Increased from 180
+                            fill_style = 'full'
+                            edge_width = 4.0   # Increased from 2.5
+                            alpha_val = 1.0
+                        elif p_val < 0.2:
+                            marker = '^'   # triangle
+                            marker_size = 260  # Increased from 160
+                            fill_style = 'full'
+                            edge_width = 4.0   # Increased from 2.5
+                            alpha_val = 0.9
+                        else:
+                            marker = 'o'   # open circle
+                            marker_size = 220  # Increased from 140
+                            fill_style = 'none'
+                            edge_width = 3.5   # Increased from 2.0
+                            alpha_val = 0.8
+
+                        # Plot marker
+                        ax.scatter(x_position, y_position, s=marker_size,
+                                   c=color_dict[param] if fill_style == 'full' else 'none',
+                                   marker=marker, edgecolors=color_dict[param],
+                                   linewidths=edge_width, alpha=alpha_val, zorder=5)
+                
+                # Customize yearly plot - INCREASED FONT SIZES
+                ax.set_xlabel('Time Period Groups', fontsize=20, fontweight='bold')  # Increased from 16
+                ax.set_xticks(range(len(years)))
+                ax.set_xticklabels(years, rotation=45, ha='right', fontsize=16)  # Increased from 13
+                ax.set_title(plot_titles[0], fontsize=22, fontweight='bold', pad=20)  # Increased from 18
+                
+            except Exception as e:
+                print(f"Error loading yearly data for {base_name}: {str(e)}")
+                ax1.text(0.5, 0.5, 'Yearly data\nnot available', 
+                        ha='center', va='center', transform=ax1.transAxes, fontsize=20)  # Increased from 16
+        
+        else:
+            ax1.text(0.5, 0.5, 'Yearly data\nnot available', 
+                    ha='center', va='center', transform=ax1.transAxes, fontsize=20)  # Increased from 16
+        
+        # Process JJA data (right plot)
+        if files['jja']:
+            jja_file_path = os.path.join(input_directory, files['jja'])
+            try:
+                p_values_df_jja = pd.read_excel(jja_file_path, sheet_name='P-values')
+                slopes_df_jja = pd.read_excel(jja_file_path, sheet_name='Slopes')
+                
+                # Clean the data
+                p_values_df_jja = p_values_df_jja.dropna(how='all')
+                slopes_df_jja = slopes_df_jja.dropna(how='all')
+                p_values_df_jja = p_values_df_jja.reset_index(drop=True)
+                slopes_df_jja = slopes_df_jja.reset_index(drop=True)
+                
+                years_jja = slopes_df_jja['Years'].values
+                data_loaded[1] = True
+                
+                # Plot JJA data
+                ax = ax2
+                for year_idx, year in enumerate(years_jja):
+                    for param in parameters:
+                        if param not in slopes_df_jja.columns or param not in p_values_df_jja.columns:
+                            continue
+                            
+                        slope = slopes_df_jja[param].iloc[year_idx]
+                        p_val = p_values_df_jja[param].iloc[year_idx]
+
+                        if pd.isna(p_val) or pd.isna(slope):
+                            continue
+
+                        # FIXED POSITION: Same logic as yearly plot
+                        base_distance = parameter_distances[param]
+                        y_position = base_distance if slope >= 0 else -base_distance
+                        
+                        x_position = year_idx
+                        x_offset = np.random.uniform(-0.15, 0.15)
+                        x_position += x_offset
+
+                        # Marker rules based on p-values - INCREASED SIZES
+                        if p_val < 0.1:
+                            marker = 'o'   # full circle
+                            marker_size = 300  # Increased from 180
+                            fill_style = 'full'
+                            edge_width = 4.0   # Increased from 2.5
+                            alpha_val = 1.0
+                        elif p_val < 0.2:
+                            marker = '^'   # triangle
+                            marker_size = 260  # Increased from 160
+                            fill_style = 'full'
+                            edge_width = 4.0   # Increased from 2.5
+                            alpha_val = 0.9
+                        else:
+                            marker = 'o'   # open circle
+                            marker_size = 220  # Increased from 140
+                            fill_style = 'none'
+                            edge_width = 3.5   # Increased from 2.0
+                            alpha_val = 0.8
+
+                        # Plot marker
+                        ax.scatter(x_position, y_position, s=marker_size,
+                                   c=color_dict[param] if fill_style == 'full' else 'none',
+                                   marker=marker, edgecolors=color_dict[param],
+                                   linewidths=edge_width, alpha=alpha_val, zorder=5)
+                
+                # Customize JJA plot - INCREASED FONT SIZES
+                ax.set_xlabel('Time Period Groups', fontsize=20, fontweight='bold')  # Increased from 16
+                ax.set_xticks(range(len(years_jja)))
+                ax.set_xticklabels(years_jja, rotation=45, ha='right', fontsize=16)  # Increased from 13
+                ax.set_title(plot_titles[1], fontsize=22, fontweight='bold', pad=20)  # Increased from 18
+                
+            except Exception as e:
+                print(f"Error loading JJA data for {base_name}: {str(e)}")
+                ax2.text(0.5, 0.5, 'JJA data\nnot available', 
+                        ha='center', va='center', transform=ax2.transAxes, fontsize=20)  # Increased from 16
+        
+        else:
+            ax2.text(0.5, 0.5, 'JJA data\nnot available', 
+                    ha='center', va='center', transform=ax2.transAxes, fontsize=20)  # Increased from 16
+        
+        # Common plot elements for both subplots
+        for ax in axes:
+            # Set y-axis limits based on maximum distance
+            max_distance = max(parameter_distances.values())
+            y_limit = max_distance * 1.2  # Add some padding
+            ax.set_ylim(-y_limit, y_limit)
+            
+            # Remove y-axis labels and ticks as requested
+            ax.set_yticks([])
+            ax.set_ylabel('')
+            
+            # Zero line - INCREASED THICKNESS
+            ax.axhline(y=0, color='black', linestyle='-', alpha=0.8, linewidth=3, zorder=1)  # Increased from 2
+            
+            # Customize spines
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+
+            # Add vertical lines to separate year groups - INCREASED VISIBILITY
+            if ax == ax1 and data_loaded[0]:
+                years_to_use = years
+            elif ax == ax2 and data_loaded[1]:
+                years_to_use = years_jja
+            else:
+                years_to_use = []
+            
+            for i in range(len(years_to_use) + 1):
+                ax.axvline(x=i - 0.5, color='gray', linestyle='--', alpha=0.5, linewidth=2, zorder=1)  # Increased visibility
+
+            # Add grid for better readability - INCREASED VISIBILITY
+            ax.grid(True, axis='y', linestyle='--', alpha=0.4, linewidth=1.2, zorder=1)  # Increased visibility
+
+        # Main title - INCREASED SIZE
+        display_name = base_name.replace("progressive_trend_tables_", "")
+        plt.suptitle(f'Trend Analysis for {display_name}',
+                    fontsize=24, fontweight='bold', y=0.96)  # Increased from 20
+
+        # Create common legends (outside the right subplot) - INCREASED SIZES
+        legend_elements = [
+            Line2D([0], [0], marker='s', color='w',
+                   markerfacecolor=color_dict[param],
+                   markersize=16, label=param)  # Increased from 12
+            for param in parameters
+        ]
+
+        marker_elements = [
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='black',
+                   markersize=20, linestyle='None', label='p < 0.1 (Full circle)'),  # Increased from 15
+            Line2D([0], [0], marker='^', color='black', markerfacecolor='black',
+                   markersize=20, linestyle='None', label='0.1 ≤ p < 0.2 (Triangle)'),  # Increased from 15
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='none',
+                   markersize=20, linestyle='None', label='p ≥ 0.2 (Open circle)')  # Increased from 15
+        ]
+
+        # Place legends - INCREASED FONT SIZES
+        legend1 = fig.legend(handles=legend_elements, 
+                           loc='center right',
+                           bbox_to_anchor=(0.98, 0.7),
+                           fontsize=14,  # Increased from 12
+                           title='Parameters', 
+                           title_fontsize=16)  # Increased from 13
+
+        legend2 = fig.legend(handles=marker_elements, 
+                           loc='center right',
+                           bbox_to_anchor=(0.98, 0.3),
+                           fontsize=14,  # Increased from 12
+                           title='Significance Levels', 
+                           title_fontsize=16)  # Increased from 13
+
+        # Adjust layout for larger elements
+        plt.tight_layout(rect=[0, 0, 0.82, 0.95])  # Adjusted for larger legends
+        
+        # Save the plot with high DPI
+        output_path = os.path.join(output_directory, f"{display_name}_side_by_side_plot.png")
+        plt.savefig(output_path, dpi=350, bbox_inches='tight')  # Increased DPI from 300
+        plt.close()
+        
+        print(f"Side-by-side plot saved for {display_name}")
+        
+    except Exception as e:
+        print(f"Error processing {base_name}: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
+print("All files processed!")
