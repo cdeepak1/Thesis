@@ -1,0 +1,243 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+from matplotlib.lines import Line2D
+
+# Define HOLAPS parameters and assign fixed colors
+color_dict = {
+    'GHF': '#1f77b4',          # blue
+    'H': '#ff7f0e',            # orange
+    'LE': '#2ca02c',           # green
+    'Rn': '#d62728',           # red
+    'Ta': '#9467bd',           # purple
+    'Td': '#8c564b',           # brown
+    'Ts': '#e377c2',           # pink
+    'rain': '#17becf',         # teal
+    'sm1': '#bcbd22',           # olive
+    'sm2': '#ff69b4',    # hot pink
+    'sm3': '#00ced1',    # dark turquoise
+    'sm4': '#ffa500',    # bright orange
+    'sm5': '#8a2be2'    # blue violet
+}
+
+parameters = list(color_dict.keys())
+
+# Fixed absolute Y positions for each parameter
+parameter_distances = {
+    'GHF': 0.2,
+    'H': 0.4,
+    'LE': 0.6,
+    'Rn': 0.8,
+    'Ta': 1.0,
+    'Td': 1.2,
+    'Ts': 1.4,
+    'rain': 1.6,
+    'sm1': 1.8,
+    'sm2': 2.0,
+    'sm3': 2.2,
+    'sm4': 2.4,
+    'sm5': 2.6
+}
+
+# Directory containing station subdirectories
+input_directory = r'C:\Deepak\HOLAPS\monthly\station_data2'
+output_directory = r'C:\Deepak\HOLAPS\monthly\station_data2\plots4'
+
+# Create output directory if it doesn't exist
+os.makedirs(output_directory, exist_ok=True)
+
+# Get list of all station subdirectories
+station_dirs = [d for d in os.listdir(input_directory)
+                if os.path.isdir(os.path.join(input_directory, d)) and not d.lower().startswith('plots') and not d.lower().startswith('yearly')]
+print(f"Found {len(station_dirs)} station directories")
+
+# Group stations - you can modify this to group as needed
+# Example: Group first 10 stations together
+station_groups = []
+group_size = 10
+
+for i in range(0, len(station_dirs), group_size):
+    station_groups.append(station_dirs[i:i + group_size])
+
+print(f"Created {len(station_groups)} groups of stations")
+
+# Process each group of stations
+for group_idx, station_group in enumerate(station_groups):
+    try:
+        print(f"\nProcessing group {group_idx + 1}: {station_group}")
+        
+        # Create figure - wider for multiple stations
+        fig, ax = plt.subplots(1, 1, figsize=(25, 12))
+        
+        all_station_data = []
+        
+        # Process each station in the group
+        for station_idx, station_dir in enumerate(station_group):
+            station_path = os.path.join(input_directory, station_dir)
+            
+            # Look for yearly trend file in this station directory
+            trend_files = [f for f in os.listdir(station_path) 
+                          if f.endswith('_yearly.xlsx') and 'trend' in f.lower()]
+            
+            if not trend_files:
+                print(f"  No yearly trend file found for {station_dir}")
+                continue
+                
+            trend_file = trend_files[0]
+            station_name = station_dir
+            
+            print(f"  Processing {station_name}...")
+            
+            # File path
+            file_path = os.path.join(station_path, trend_file)
+            
+            # Read the Excel file
+            p_values_df = pd.read_excel(file_path, sheet_name='P-values')
+            slopes_df = pd.read_excel(file_path, sheet_name='Slopes')
+            
+            # Clean the data
+            p_values_df = p_values_df.dropna(how='all')
+            slopes_df = slopes_df.dropna(how='all')
+            p_values_df = p_values_df.reset_index(drop=True)
+            slopes_df = slopes_df.reset_index(drop=True)
+            
+            # Get periods and analyses (should be just one row for yearly data)
+            periods = slopes_df['Period'].values
+            analyses = slopes_df['Analysis'].values
+            
+            # For each parameter, plot for this station
+            for param in parameters:
+                if param not in slopes_df.columns or param not in p_values_df.columns:
+                    continue
+                    
+                slope = slopes_df[param].iloc[0]  # First (and only) row for yearly data
+                p_val = p_values_df[param].iloc[0]
+
+                if pd.isna(p_val) or pd.isna(slope):
+                    continue
+
+                # X position: station index (spaced out)
+                x_position = station_idx * 2  # Space stations 2 units apart
+                
+                # Y position: parameter position + small random offset
+                base_distance = parameter_distances[param]
+                y_position = base_distance if slope >= 0 else -base_distance
+                
+                # Small vertical offset to avoid perfect alignment
+                #y_offset = np.random.uniform(-0.05, 0.05)
+                #y_position += y_offset
+
+                # Marker rules based on p-values
+                if p_val < 0.1:
+                    marker = 'o'   # full circle
+                    marker_size = 250
+                    fill_style = 'full'
+                    edge_width = 3.0
+                    alpha_val = 1.0
+                elif p_val < 0.2:
+                    marker = '^'   # triangle
+                    marker_size = 220
+                    fill_style = 'full'
+                    edge_width = 3.0
+                    alpha_val = 0.9
+                else:
+                    marker = 'o'   # open circle
+                    marker_size = 200
+                    fill_style = 'none'
+                    edge_width = 2.5
+                    alpha_val = 0.8
+
+                # Plot marker
+                ax.scatter(x_position, y_position, s=marker_size,
+                           c=color_dict[param] if fill_style == 'full' else 'none',
+                           marker=marker, edgecolors=color_dict[param],
+                           linewidths=edge_width, alpha=alpha_val, zorder=5,
+                           label=f'{station_name}_{param}' if station_idx == 0 else "")
+        
+        # Customize plot
+        ax.set_xlabel('Stations', fontsize=20, fontweight='bold')
+        ax.set_xticks(range(0, len(station_group) * 2, 2))
+        ax.set_xticklabels(station_group, rotation=45, ha='right', fontsize=14)
+        
+        # Set y-axis limits based on maximum distance
+        max_distance = max(parameter_distances.values())
+        y_limit = max_distance * 1.3  # Add some padding
+        ax.set_ylim(-y_limit, y_limit)
+        
+        # Remove y-axis labels and ticks
+        ax.set_yticks([])
+        ax.set_ylabel('')
+        
+        # Zero line
+        ax.axhline(y=0, color='black', linestyle='-', alpha=0.8, linewidth=2, zorder=1)
+        
+        # Add vertical lines to separate stations
+        for i in range(len(station_group) + 1):
+            ax.axvline(x=i * 2 - 1, color='gray', linestyle='--', alpha=0.3, linewidth=1, zorder=1)
+
+        # Add grid for better readability
+        ax.grid(True, axis='y', linestyle='--', alpha=0.3, linewidth=1, zorder=1)
+
+        # Main title
+        plt.title(f'HOLAPS Yearly  Trend Analysis - Stations {group_idx * group_size + 1} to {group_idx * group_size + len(station_group)}',
+                 fontsize=22, fontweight='bold', pad=20)
+
+        # Customize spines
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+
+        # Create legends
+        legend_elements = [
+            Line2D([0], [0], marker='s', color='w',
+                   markerfacecolor=color_dict[param],
+                   markersize=12, label=param)
+            for param in parameters
+        ]
+
+        marker_elements = [
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='black',
+                   markersize=15, linestyle='None', label='p < 0.1 (Full circle)'),
+            Line2D([0], [0], marker='^', color='black', markerfacecolor='black',
+                   markersize=15, linestyle='None', label='0.1 ≤ p < 0.2 (Triangle)'),
+            Line2D([0], [0], marker='o', color='black', markerfacecolor='none',
+                   markersize=15, linestyle='None', label='p ≥ 0.2 (Open circle)')
+        ]
+
+        # Place legends
+        legend1 = ax.legend(handles=legend_elements, 
+                          loc='upper left',
+                          bbox_to_anchor=(1.02, 1),
+                          fontsize=12,
+                          title='HOLAPS Parameters', 
+                          title_fontsize=14)
+        
+        ax.add_artist(legend1)
+
+        legend2 = ax.legend(handles=marker_elements, 
+                          loc='lower left',
+                          bbox_to_anchor=(1.02, 0.35),
+                          fontsize=12,
+                          title='Significance Levels', 
+                          title_fontsize=14)
+
+        # Add both legends to the plot
+       
+        
+        # Adjust layout for larger elements
+        plt.tight_layout(rect=[0, 0, 0.85, 0.95])
+        
+        # Save the plot with high DPI
+        output_path = os.path.join(output_directory, f"holaps_trend_group_{group_idx + 1}.png")
+        plt.savefig(output_path, dpi=350, bbox_inches='tight')
+        plt.close()
+        
+        print(f"✓ Group {group_idx + 1} plot saved with {len(station_group)} stations")
+        
+    except Exception as e:
+        print(f"Error processing group {group_idx + 1}: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
+print("All station groups processed!")
